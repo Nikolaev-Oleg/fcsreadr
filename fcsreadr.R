@@ -1,0 +1,459 @@
+#Packages####
+library(BMS)
+library(tidyverse)
+library(glue)
+#library(grid)
+library(shiny)
+
+#Functions####
+file = "D:/Expirment_20250924182410/4.fcs"
+
+get_fcs_metadata<-function(file){
+  file<-read_file(file = file)
+  
+  #|||||||||||||||||||||||| HEADER |||||||||||||||||||||||||||||||||||||||||||||||
+  
+  fcs_version<-str_sub(file, 1, 6) # NB: indexing from 1
+  
+  begin_text_from_header = str_sub(file, 11, 18) %>%
+    str_remove_all(' ') %>%
+    as.numeric()
+  if(begin_text_from_header != 0) begin_text_from_header <- begin_text_from_header+1
+  
+  end_text_from_header = str_sub(file, 19, 26) %>%
+    str_remove_all(' ') %>%
+    as.numeric()
+  if(end_text_from_header != 0) end_text_from_header <- end_text_from_header+1
+  
+  begin_data_from_header = str_sub(file, 27, 34) %>%
+    str_remove_all(' ') %>%
+    as.numeric()
+  if(begin_data_from_header != 0) begin_data_from_header <- begin_data_from_header+1
+  
+  end_data_from_header = str_sub(file, 35, 42) %>%
+    str_remove_all(' ') %>%
+    as.numeric()
+  if(end_data_from_header != 0) end_data_from_header <- end_data_from_header+1
+  
+  begin_analysis_from_header = str_sub(file, 43, 50) %>%
+    str_remove_all(' ') %>%
+    as.numeric()
+  if(begin_analysis_from_header != 0) begin_analysis_from_header <- begin_analysis_from_header+1
+  
+  end_analysis_from_header = str_sub(file, 51, 58) %>%
+    str_remove_all(' ') %>%
+    as.numeric()
+  if(end_analysis_from_header != 0) end_analysis_from_header <- end_analysis_from_header+1
+  
+  #||||||||||||||||||||||| TEXT ||||||||||||||||||||||||||||||||||||||||||||||||||
+  
+  delimiter<-str_extract(file, regex("\\$beginanalysis.", ignore_case = T, dotall = TRUE)) %>%
+    str_remove(regex("\\$beginanalysis", ignore_case = T))
+  if(delimiter != '\f'){
+    file<-str_replace_all(file, glue('(?<!{delimiter}){delimiter}(?!{delimiter})'), '\f')
+  }
+  
+  beginanalysis<-str_extract(file, regex("\\$beginanalysis(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    str_remove(regex("\\$beginanalysis", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$') %>%
+    as.numeric()
+  if(beginanalysis != 0) beginanalysis <- beginanalysis+1
+  
+  endanalysis<-str_extract(file, regex("\\$endanalysis(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    str_remove(regex("\\$endanalysis", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$') %>%
+    as.numeric()
+  if(endanalysis != 0) endanalysis <- endanalysis+1
+  
+  beginstext<-str_extract(file, regex("\\$beginstext(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    str_remove(regex("\\$beginstext", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$') %>%
+    as.numeric()
+  if(beginstext != 0) beginstext <- beginstext+1
+  
+  endstext<-str_extract(file, regex("\\$beginstext(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    str_remove(regex("\\$beginstext", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$') %>%
+    as.numeric()
+  if(endstext != 0) endstext <- endstext+1
+  
+  begindata<-str_extract(file, regex("\\$begindata(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    str_remove(regex("\\$begindata", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$') %>%
+    as.numeric()
+  if(begindata != 0) begindata <- begindata+1
+  
+  enddata<-str_extract(file, regex("\\$enddata(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    str_remove(regex("\\$enddata", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$') %>%
+    as.numeric()
+  if(enddata != 0) enddata <- enddata+1
+  
+  byteord<-str_extract(file, regex("\\$byteord(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    str_remove(regex("\\$byteord", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$')
+  if(byteord == '4,3,2,1'){
+    endian <- 'big'} else if(byteord == '1,2,3,4'){
+      endian <- 'little'} else {
+        endian = 'swap'
+        warning("Unknown byteord. Use endian = 'swap'")
+      }
+  
+  datatype<-str_extract(file, regex("\\$datatype(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    str_remove(regex("\\$datatype", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$')
+  if(datatype != 'F') warning("Data types other than F are not supported yet")
+  
+  mode<-str_extract(file, regex("\\$mode(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    str_remove(regex("\\$mode", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$')
+  if(mode != 'L') warning("Storage modes other than L are deprecated in FCS3.1")
+  
+  nextdata<-str_extract(file, regex("\\$nextdata(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    str_remove(regex("\\$nextdata", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$') %>%
+    as.numeric()
+  if(nextdata != 0) nextdata <- nextdata+1
+  
+  proj<-str_extract(file, regex("\\$proj(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    str_remove(regex("\\$proj", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$')
+  
+  fil<-str_extract(file, regex("\\$fil(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    str_remove(regex("\\$fil", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$')
+  
+  tot<-str_extract(file, regex("\\$tot(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    str_remove(regex("\\$tot", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$') %>%
+    as.numeric()
+  
+  par<-str_extract(file, regex("\\$par(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    str_remove(regex("\\$par", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$') %>%
+    as.numeric()
+  
+  spillover<-str_extract(file, regex("\\$spillover(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    str_remove(regex("\\$spillover", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$') %>%
+    str_split(',') %>%
+    unlist()
+  
+  n<-as.numeric(spillover[1])
+  spillover<-spillover[-1]
+  
+  channels <- spillover[1:n]
+  spillover <- as.numeric(spillover[-c(1:n)])
+  
+  spillover<-matrix(spillover, nrow = n, ncol = n, byrow = T)
+  colnames(spillover) <- channels
+  rownames(spillover) <- channels
+  
+  singular<-1
+  for(i in 1:n){
+    for(j in 1:n){
+      singularity_check <- (i == j & spillover[i,j] == 1)|(i != j & spillover[i,j] == 0)
+      singular<-singular*singularity_check
+      if(!singular){
+        break
+      }
+    }
+    if(!singular){
+      warning("Compensation matrix is not singular, try decompensate()")
+      break
+    }
+  }
+  if(singular)print('Compensation matrix checked')
+  
+  
+  pnn<-str_extract_all(file, regex("\\$p[:digit:]+n(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    unlist() %>%
+    str_remove(regex("\\$p[:digit:]+n", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$')
+  
+  pns<-str_extract_all(file, regex("\\$p[:digit:]+s(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    unlist() %>%
+    str_remove(regex("\\$p[:digit:]+s", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$')
+  
+  pnd<-str_extract_all(file, regex("\\$p[:digit:]+d(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    unlist() %>%
+    str_remove(regex("\\$p[:digit:]+d", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$')
+  
+  png<-str_extract_all(file, regex("\\$p[:digit:]+g(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    unlist() %>%
+    str_remove(regex("\\$p[:digit:]+g", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$') %>%
+    as.numeric()
+  
+  pnr<-str_extract_all(file, regex("\\$p[:digit:]+r(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    unlist() %>%
+    str_remove(regex("\\$p[:digit:]+r", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$') %>%
+    as.numeric()
+  
+  pnb<-str_extract_all(file, regex("\\$p[:digit:]+b(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    unlist() %>%
+    str_remove(regex("\\$p[:digit:]+b", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$') %>%
+    as.numeric()
+  
+  pne<-str_extract_all(file, regex("\\$p[:digit:]+e(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    unlist() %>%
+    str_remove(regex("\\$p[:digit:]+e", ignore_case = T)) %>% 
+    str_remove_all('\\f') %>% 
+    str_remove_all('\\$')
+  
+  channels_data<-tibble(n = 1:par,
+                        PnN = pnn,
+                        PnS = pns,
+                        PnD = pnd,
+                        PnG = png,
+                        PnR = pnr,
+                        PnB = pnb,
+                        PnE = pne)
+  
+  metadata <- list(begin_analysis_from_header = begin_analysis_from_header,
+                   end_analysis_from_header = end_analysis_from_header,
+                   begin_text_from_header = begin_text_from_header,
+                   end_text_from_header = end_text_from_header,
+                   begin_data_from_header = begin_data_from_header,
+                   end_data_from_header = end_data_from_header,
+                   beginanalysis = beginanalysis,
+                   endanalysis = endanalysis,
+                   beginstext = beginstext,
+                   endstext = endstext,
+                   begindata = begindata,
+                   enddata = enddata,
+                   byteord = byteord,
+                   endian = endian,
+                   datatype = datatype,
+                   mode = mode,
+                   nextdata = nextdata,
+                   proj = proj,
+                   fil = fil,
+                   tot = tot,
+                   par = par, 
+                   spillover = spillover,
+                   channels_data = channels_data)
+  
+  print(glue('File {fil} processed.
+           Project: {proj}.
+           Total number of events: {tot}'))
+  
+  return(metadata)
+}
+read.fcs<-function(file){
+  metadata<-get_fcs_metadata(file)
+  if(length(unique(metadata$channels_data$PnB)) == 1){
+    intesity<-c()
+    n <- max(metadata$enddata, metadata$end_data_from_header)
+    size <- metadata$channels_data$PnB[1]/8
+    bytes_remove <- max(metadata$begindata, metadata$begin_data_from_header) - 1
+    
+    binary_data<-readBin(con = file,
+                         what = 'raw',
+                         n = n,
+                         endian = metadata$endian)[-c(1:bytes_remove)]
+    
+    intensity<-readBin(binary_data, 
+                       what = 'numeric',
+                       n = length(binary_data),
+                       size = size,
+                       endian = metadata$endian)
+    df <- matrix(intensity, ncol = metadata$par, byrow = T)
+  } else{
+    warning('PnB not equal for all parameters. Processing ill take much longer than usual')
+    bytes_per_event = sum(metadata$channels_data$PnB)
+    intensity <- c()
+    for(i in 1:metadata$tot){
+      
+      n <- max(metadata$begindata, metadata$begin_data_from_header) +
+        i*bytes_per_event - 1
+      
+      bytes_remove <- max(metadata$begindata, metadata$begin_data_from_header) +
+        (i-1)*bytes_per_event  - 1
+      
+      binary_data<-readBin(con = file,
+                           what = 'raw',
+                           n = n,
+                           endian = metadata$endian)[-c(1:bytes_remove)]
+      
+      for(j in metadata$channels_data$n){
+        temp <- binary_data[1:(metadata$channels_data$PnB[j]/8)]
+        value <- readBin(temp, 
+                         what = 'numeric',
+                         n = length(temp),
+                         size = length(temp),
+                         endian = metadata$endian)
+        intensity<-append(intensity, value)
+        binary_data<-binary_data[-c(1:(metadata$channels_data$PnB[j]/8))]
+      }
+    }
+    df<-matrix(intensity, ncol = metadata$par, byrow = T)
+    df<-na.omit(df)
+  }
+  colnames(df)<-c(metadata$channels_data$PnS) %>%
+    str_remove_all(' ') %>%
+    str_replace_all('-', '_')
+  df<-as.data.frame(df)
+
+  return(df)
+}
+pseudocolour<-function(x, y, r){
+  if(length(x)!=length(y))
+    stop('length(x) must be equal to length(y)')
+  df<-data.frame(x=x, y=y)
+  density<-rep(NA, length(x))
+  for(i in 1:length(x)){
+    x.center<-x[i]
+    y.center<-y[i]
+    neighbours<-subset(df, (x-x.center)^2+(y-y.center)^2<r^2)
+    n.neighbours<-nrow(neighbours)
+    density[i]<-n.neighbours
+  }
+  return(density)
+}
+gui_gate_editor<-function(df){
+  global_points<-NULL
+  
+  ui <- fluidPage(
+    titlePanel("Gate editor"),
+    sidebarLayout(
+      sidebarPanel(
+        selectInput("x_var", "x variable:", choices = names(df)),
+        selectInput("y_var", "y variable:", choices = names(df)),
+        numericInput("alpha", "alpha:", min = 0, max = 1, value = 0.3, step = 0.001),
+        numericInput("xmin", "xmin", min = -1e7, max = 1e6, value = 0, step = 0.1),
+        numericInput("xmax", "xmax", min = -1e6, max = 1e7, value = 1e5, step = 0.1),
+        numericInput("ymin", "ymin", min = -1e7, max = 1e6, value = 0, step = 0.1),
+        numericInput("ymax", "ymax", min = -1e6, max = 1e7, value = 1e5, step = 0.1)
+      ),
+      mainPanel(
+        plotOutput("plot", click = "plot_click")
+      )
+    ),
+    actionButton("reset", "Reset Points"),
+    actionButton("completegate", "Complete gate"),
+    actionButton("ending","Done")
+  )
+  
+  server <- function(input, output, session) {
+    # Reactive value to store points
+    points <- reactiveVal(data.frame(x = numeric(0), y = numeric(0)))
+    
+    # Observe plot clicks
+    observeEvent(input$plot_click, {
+      new_point <- data.frame(x = input$plot_click$x, y = input$plot_click$y)
+      points(rbind(points(), new_point))
+    })
+    
+    # Reset points when reset button is clicked
+    observeEvent(input$reset, {
+      points(data.frame(x = numeric(0), y = numeric(0)))
+    })
+    
+    # Finish current gate
+    observeEvent(input$completegate, {
+      new_point <- points()[1,]
+      points(rbind(points(), new_point))
+      
+      showModal(modalDialog(
+        title = "Please enter some text",
+        textInput("user_input", "Tap and type here:"),
+        footer = tagList(
+          actionButton("cancel", "Cancel"),
+          actionButton("submit", "Submit")
+        )
+      ))
+    })
+    
+    #Submit gate name
+    observeEvent(input$submit, {
+      points(mutate(points(), gate = input$user_input,
+                    par_x = input$x_var,
+                    par_y = input$y_var))
+      global_points<<-rbind(global_points, points())
+      points(data.frame(x = numeric(0), y = numeric(0)))
+      removeModal()
+    })
+    
+    #Cancel submission if required
+    observeEvent(input$cancel, {
+      points(points()[1:(nrow(points())-1), ])
+      removeModal()
+    })
+    
+    #Close the app
+    observeEvent(input$ending, {
+      stopApp()
+    })
+    
+    output$plot <- renderPlot({
+      pts <- points()
+      gg <- ggplot(df, aes_string(input$x_var, input$y_var))+
+        geom_point(colour = '#2288dd', alpha = input$alpha, size = 1.5)+
+        xlim(c(input$xmin, input$xmax))+
+        ylim(c(input$ymin, input$ymax))
+      
+      if(nrow(as.data.frame(global_points))>0){
+        gg <- gg + geom_path(data = subset(global_points, par_x == input$x_var & par_y == input$y_var),
+                             aes(x = x, y = y, color = gate))
+      }
+      
+      if (nrow(pts) > 0) {
+        gg <- gg + geom_point(data = pts, aes(x = x, y = y), color = "black")
+        
+        if(nrow(pts > 1)) {
+          gg <- gg+
+            geom_point(data = pts, aes(x = x, y = y), color = "black")+
+            geom_path(data = pts, aes(x = x, y = y), color = "black")
+        }
+      }
+      gg
+    })
+  }
+  
+  app<-shinyApp(ui, server)
+  runApp(app)
+  return(global_points)
+}
+
+std_gradient<-c('blue', 'cyan', 'green', 'red','orange','yellow', 'white')
+
+#Test file processing####
+metadata<-get_fcs_metadata(file)
+df<-read.fcs(file)
+
+a <- Sys.time()
+density<-pseudocolour(df$`FSC_H`, df$`SSC_H`, r = 100)
+Sys.time()-a
+#Plot####
+ggplot(df, aes(`FSC_H`, `SSC_H`, colour = density))+
+  geom_point()+
+  xlim(c(0, 5000))+
+  ylim(c(0, 5000))+
+  scale_color_gradientn(colours=std_gradient)
+
