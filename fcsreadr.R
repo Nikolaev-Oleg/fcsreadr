@@ -2,12 +2,9 @@
 library(BMS)
 library(tidyverse)
 library(glue)
-#library(grid)
 library(shiny)
 
 #Functions####
-file = "D:/Expirment_20250924182410/4.fcs"
-
 get_fcs_metadata<-function(file){
   file<-read_file(file = file)
   
@@ -444,6 +441,7 @@ gui_gate_editor<-function(df){
 std_gradient<-c('blue', 'cyan', 'green', 'red','orange','yellow', 'white')
 
 #Test file processing####
+file = "path/to/file"
 metadata<-get_fcs_metadata(file)
 df<-read.fcs(file)
 
@@ -456,4 +454,5 @@ ggplot(df, aes(`FSC_H`, `SSC_H`, colour = density))+
   xlim(c(0, 5000))+
   ylim(c(0, 5000))+
   scale_color_gradientn(colours=std_gradient)
+
 
