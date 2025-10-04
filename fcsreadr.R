@@ -3,6 +3,8 @@ library(BMS)
 library(tidyverse)
 library(glue)
 library(shiny)
+library(tigers)
+library(scales)
 
 #Functions####
 get_fcs_metadata<-function(file){
@@ -262,7 +264,7 @@ get_fcs_metadata<-function(file){
   
   return(metadata)
 }
-read.fcs<-function(file){
+read_fcs<-function(file){
   metadata<-get_fcs_metadata(file)
   if(length(unique(metadata$channels_data$PnB)) == 1){
     intesity<-c()
@@ -333,7 +335,131 @@ pseudocolour<-function(x, y, r){
   }
   return(density)
 }
-gui_gate_editor<-function(df){
+gui_gate_editor.biex<-function(df){
+  global_points<-NULL
+  
+  trans_fun <- function(x, a, b = 1, c, f = 1, w = 1)a*exp(b*(x-w))-c*exp(-b*(x-w))+f
+  
+  ui <- fluidPage(
+    titlePanel("Gate editor"),
+    sidebarLayout(
+      sidebarPanel(
+        selectInput("x_var", "x variable:", choices = names(df)),
+        selectInput("y_var", "y variable:", choices = names(df)),
+        numericInput("alpha", "alpha:", min = 0, max = 1, value = 0.3, step = 0.001),
+        #numericInput("xmin", "xmin", min = -1e7, max = 1e6, value = 0, step = 0.1),
+        #numericInput("xmax", "xmax", min = -1e6, max = 1e7, value = 1e5, step = 0.1),
+        #numericInput("ymin", "ymin", min = -1e7, max = 1e6, value = 0, step = 0.1),
+        #numericInput("ymax", "ymax", min = -1e6, max = 1e7, value = 1e5, step = 0.1),
+        numericInput("a.x", "a.x", min = -1e5, max = 1e5, value = 0.5, step = 0.1),
+        numericInput("a.y", "a.y", min = -1e5, max = 1e5, value = 0.5, step = 0.1),
+        numericInput("c.x", "c.x", min = -1e5, max = 1e5, value = 0.5, step = 0.1),
+        numericInput("c.y", "c.y", min = -1e5, max = 1e5, value = 0.5, step = 0.1),
+        numericInput("f.x", "f.x", min = -1e5, max = 1e5, value = 0, step = 0.1),
+        numericInput("f.y", "f.y", min = -1e5, max = 1e5, value = 0, step = 0.1)
+      ),
+      mainPanel(
+        plotOutput("plot", click = "plot_click")
+      )
+    ),
+    actionButton("reset", "Reset Points"),
+    actionButton("completegate", "Complete gate"),
+    actionButton("ending","Done")
+  )
+  
+  server <- function(input, output, session) {
+    # Reactive value to store points
+    points <- reactiveVal(data.frame(x = numeric(0), y = numeric(0)))
+    
+    # Observe plot clicks
+    observeEvent(input$plot_click, {
+      new_point <- data.frame(x = input$plot_click$x, y = input$plot_click$y)
+      points(rbind(points(), new_point))
+    })
+    
+    # Reset points when reset button is clicked
+    observeEvent(input$reset, {
+      points(data.frame(x = numeric(0), y = numeric(0)))
+    })
+    
+    # Finish current gate
+    observeEvent(input$completegate, {
+      new_point <- points()[1,]
+      points(rbind(points(), new_point))
+      
+      showModal(modalDialog(
+        title = "Please enter some text",
+        textInput("user_input", "Tap and type here:"),
+        footer = tagList(
+          actionButton("cancel", "Cancel"),
+          actionButton("submit", "Submit")
+        )
+      ))
+    })
+    
+    #Submit gate name
+    observeEvent(input$submit, {
+      points(mutate(points(), gate = input$user_input,
+                    par_x = input$x_var,
+                    par_y = input$y_var))
+      global_points<<-rbind(global_points, points())
+      points(data.frame(x = numeric(0), y = numeric(0)))
+      removeModal()
+    })
+    
+    #Cancel submission if required
+    observeEvent(input$cancel, {
+      points(points()[1:(nrow(points())-1), ])
+      removeModal()
+    })
+    
+    #Close the app
+    observeEvent(input$ending, {
+      stopApp()
+    })
+    
+    output$plot <- renderPlot({
+      pts <- points() 
+      pts$x <- trans_fun(pts$x, a = input$a.x,
+                                c = input$c.x,
+                                f = input$f.x)
+      pts$y = trans_fun(pts$y, a = input$a.y,
+                                c = input$c.y,
+                                f = input$f.y)
+      gg <- ggplot(df, aes_string(input$x_var, input$y_var))+
+        geom_point(colour = '#2288dd', alpha = input$alpha, size = 1.5)+
+        scale_x_continuous(transform = transform_biex(a = input$a.x,
+                                                      c = input$c.x,
+                                                      f = input$f.x))+
+        scale_y_continuous(transform = transform_biex(a = input$a.y,
+                                                      c = input$c.y,
+                                                      f = input$f.y))
+        #xlim(c(input$xmin, input$xmax))+
+        #ylim(c(input$ymin, input$ymax))
+      
+      if(nrow(as.data.frame(global_points))>0){
+        gg <- gg + geom_path(data = subset(global_points, par_x == input$x_var & par_y == input$y_var),
+                             aes(x = x, y = y, color = gate))
+      }
+      
+      if (nrow(pts) > 0) {
+        gg <- gg + geom_point(data = pts, aes(x = x, y = y), color = "black")
+        
+        if(nrow(pts > 1)) {
+          gg <- gg+
+            geom_point(data = pts, aes(x = x, y = y), color = "black")+
+            geom_path(data = pts, aes(x = x, y = y), color = "black")
+        }
+      }
+      gg
+    })
+  }
+  
+  app<-shinyApp(ui, server)
+  runApp(app)
+  return(global_points)
+}
+gui_gate_editor.linear<-function(df){
   global_points<-NULL
   
   ui <- fluidPage(
@@ -437,22 +563,160 @@ gui_gate_editor<-function(df){
   runApp(app)
   return(global_points)
 }
+gui_gate_editor.log<-function(df){
+  global_points<-NULL
+  trans_fun <- function(x, base) base^x
+  
+  ui <- fluidPage(
+    titlePanel("Gate editor"),
+    sidebarLayout(
+      sidebarPanel(
+        selectInput("x_var", "x variable:", choices = names(df)),
+        selectInput("y_var", "y variable:", choices = names(df)),
+        numericInput("alpha", "alpha:", min = 0, max = 1, value = 0.3, step = 0.001),
+        #numericInput("xmin", "xmin", min = -1e7, max = 1e6, value = 0, step = 0.1),
+        #numericInput("xmax", "xmax", min = -1e6, max = 1e7, value = 1e5, step = 0.1),
+        #numericInput("ymin", "ymin", min = -1e7, max = 1e6, value = 0, step = 0.1),
+        #numericInput("ymax", "ymax", min = -1e6, max = 1e7, value = 1e5, step = 0.1),
+        numericInput("base", "base", min = -1e3, max = 1e3, value = 10, step = 0.1)
+      ),
+      mainPanel(
+        plotOutput("plot", click = "plot_click")
+      )
+    ),
+    actionButton("reset", "Reset Points"),
+    actionButton("completegate", "Complete gate"),
+    actionButton("ending","Done")
+  )
+  
+  server <- function(input, output, session) {
+    # Reactive value to store points
+    points <- reactiveVal(data.frame(x = numeric(0), y = numeric(0)))
+    
+    # Observe plot clicks
+    observeEvent(input$plot_click, {
+      new_point <- data.frame(x = input$plot_click$x, y = input$plot_click$y)
+      points(rbind(points(), new_point))
+    })
+    
+    # Reset points when reset button is clicked
+    observeEvent(input$reset, {
+      points(data.frame(x = numeric(0), y = numeric(0)))
+    })
+    
+    # Finish current gate
+    observeEvent(input$completegate, {
+      new_point <- points()[1,]
+      points(rbind(points(), new_point))
+      
+      showModal(modalDialog(
+        title = "Please enter some text",
+        textInput("user_input", "Tap and type here:"),
+        footer = tagList(
+          actionButton("cancel", "Cancel"),
+          actionButton("submit", "Submit")
+        )
+      ))
+    })
+    
+    #Submit gate name
+    observeEvent(input$submit, {
+      points(mutate(points(), gate = input$user_input,
+                    par_x = input$x_var,
+                    par_y = input$y_var))
+      global_points<<-rbind(global_points, points())
+      points(data.frame(x = numeric(0), y = numeric(0)))
+      removeModal()
+    })
+    
+    #Cancel submission if required
+    observeEvent(input$cancel, {
+      points(points()[1:(nrow(points())-1), ])
+      removeModal()
+    })
+    
+    #Close the app
+    observeEvent(input$ending, {
+      stopApp()
+    })
+    
+    output$plot <- renderPlot({
+      pts <- points()
+      pts$x <- trans_fun(pts$x, base = input$base)
+      pts$y = trans_fun(pts$y, base = input$base)
+      
+      gg <- ggplot(df, aes_string(input$x_var, input$y_var))+
+        geom_point(colour = '#2288dd', alpha = input$alpha, size = 1.5)+
+        scale_x_continuous(transform = transform_anylog(base = input$base))+
+        scale_y_continuous(transform = transform_anylog(base = input$base))
+        #xlim(c(input$xmin, input$xmax))+
+        #ylim(c(input$ymin, input$ymax))
+      
+      if(nrow(as.data.frame(global_points))>0){
+        gg <- gg + geom_path(data = subset(global_points, par_x == input$x_var & par_y == input$y_var),
+                             aes(x = x, y = y, color = gate))
+      }
+      
+      if (nrow(pts) > 0) {
+        gg <- gg + geom_point(data = pts, aes(x = x, y = y), color = "black")
+        
+        if(nrow(pts > 1)) {
+          gg <- gg+
+            geom_point(data = pts, aes(x = x, y = y), color = "black")+
+            geom_path(data = pts, aes(x = x, y = y), color = "black")
+        }
+      }
+      gg
+    })
+  }
+  
+  app<-shinyApp(ui, server)
+  runApp(app)
+  return(global_points)
+}
+gui_gate_editor<-function(df, scale = 'linear'){
+  scale <- scale
+  if(scale == 'linear') gui_gate_editor.linear(df)
+  if(scale == 'biex') gui_gate_editor.biex(df)
+  if(scale == 'log') gui_gate_editor.log(df)
+  if(!scale %in% c('linear', 'biex', 'log'))errorCondition('Unknown scale type')
+}
+
+gate_mask<-function(df, gates){
+  gates<-as.data.frame(gates)
+  gate_mask<-NULL
+  for(g in unique(gates$gate)){
+    x_par <- subset(gates, gate == g)$par_x[1]
+    y_par <- subset(gates, gate == g)$par_y[1]
+    XY <- subset(gates, gate == g)%>%
+      select(c('x', 'y'))%>%
+      as.matrix()
+    points <- select(df, c(x_par, y_par)) %>%
+      as.matrix()
+    gate_mask <- cbind(gate_mask, as.numeric(tigers::is.insidePolygon(XY, points)))
+  }
+  gate_mask<-as.data.frame(gate_mask)
+  names(gate_mask)<-unique(gates$gate)
+  return(gate_mask)
+}
+transform_biex <- function(x, a = 1000, b = 1, c = 100, f = 1, w = 1){
+  scales::new_transform(
+    name = 'biex',
+    transform =function(x){
+    t <- ((x-f)+ sqrt((x-f)^2+4*a*c))/(2*a)
+    z <- log(t)/(b)
+    y <- z+w
+    return(y)
+    },
+    inverse = function(x) a*exp(b*(x-w))-c*exp(-b*(x-w))+f,
+  )
+}
+transform_anylog <- function(x, base){
+  scales::new_transform(
+    name = 'anylog',
+    transform =function(x)log(x, base = base),
+    inverse = function(x)base^x,
+  )
+}
 
 std_gradient<-c('blue', 'cyan', 'green', 'red','orange','yellow', 'white')
-
-#Test file processing####
-file = "path/to/file"
-metadata<-get_fcs_metadata(file)
-df<-read.fcs(file)
-
-a <- Sys.time()
-density<-pseudocolour(df$`FSC_H`, df$`SSC_H`, r = 100)
-Sys.time()-a
-#Plot####
-ggplot(df, aes(`FSC_H`, `SSC_H`, colour = density))+
-  geom_point()+
-  xlim(c(0, 5000))+
-  ylim(c(0, 5000))+
-  scale_color_gradientn(colours=std_gradient)
-
-
