@@ -13,3 +13,5 @@ Requirements:
 1) RStudio
 2) R >= 4.2.2
 3) packages: BMS, tidyverse, glue, shiny
+
+Test code is provided in test.R
