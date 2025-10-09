@@ -318,7 +318,7 @@ read_fcs<-function(file){
     str_remove_all(' ') %>%
     str_replace_all('-', '_')
   df<-as.data.frame(df)
-
+  
   return(df)
 }
 pseudocolour<-function(x, y, r){
@@ -399,9 +399,16 @@ gui_gate_editor.biex<-function(df){
     
     #Submit gate name
     observeEvent(input$submit, {
-      points(mutate(points(), gate = input$user_input,
+      points(mutate(points(),
+                    gate = input$user_input,
                     par_x = input$x_var,
-                    par_y = input$y_var))
+                    par_y = input$y_var,
+                    a.x = input$a.x,
+                    c.x = input$c.x,
+                    f.x = input$f.x,
+                    a.y = input$a.y,
+                    c.y = input$c.y,
+                    f.y = input$f.y))
       global_points<<-rbind(global_points, points())
       points(data.frame(x = numeric(0), y = numeric(0)))
       removeModal()
@@ -421,11 +428,11 @@ gui_gate_editor.biex<-function(df){
     output$plot <- renderPlot({
       pts <- points() 
       pts$x <- trans_fun(pts$x, a = input$a.x,
-                                c = input$c.x,
-                                f = input$f.x)
+                         c = input$c.x,
+                         f = input$f.x)
       pts$y = trans_fun(pts$y, a = input$a.y,
-                                c = input$c.y,
-                                f = input$f.y)
+                        c = input$c.y,
+                        f = input$f.y)
       gg <- ggplot(df, aes_string(input$x_var, input$y_var))+
         geom_point(colour = '#2288dd', alpha = input$alpha, size = 1.5)+
         scale_x_continuous(transform = transform_biex(a = input$a.x,
@@ -434,11 +441,22 @@ gui_gate_editor.biex<-function(df){
         scale_y_continuous(transform = transform_biex(a = input$a.y,
                                                       c = input$c.y,
                                                       f = input$f.y))
-        #xlim(c(input$xmin, input$xmax))+
-        #ylim(c(input$ymin, input$ymax))
+      #xlim(c(input$xmin, input$xmax))+
+      #ylim(c(input$ymin, input$ymax))
       
       if(nrow(as.data.frame(global_points))>0){
-        gg <- gg + geom_path(data = subset(global_points, par_x == input$x_var & par_y == input$y_var),
+        glob_pts <- subset(global_points, par_x == input$x_var & par_y == input$y_var) %>%
+          rowwise() %>%
+          mutate(x = trans_fun(x, a = a.x, c = c.x, f = f.x),
+                 y = trans_fun(y, a = a.y, c = c.y, f = f.y))
+        #glob_pts$x <- trans_fun(glob_pts$x, a = input$a.x,
+        #                  c = input$c.x,
+        #                 f = input$f.x)
+        #glob_pts$y = trans_fun(glob_pts$y, a = input$a.y,
+        #                 c = input$c.y,
+        #                f = input$f.y)
+        
+        gg <- gg + geom_path(data = glob_pts,
                              aes(x = x, y = y, color = gate))
       }
       
@@ -457,6 +475,17 @@ gui_gate_editor.biex<-function(df){
   
   app<-shinyApp(ui, server)
   runApp(app)
+  global_points<-global_points %>%
+    rowwise() %>%
+    mutate(x = trans_fun(x, a = a.x, c = c.x, f = f.x),
+           y = trans_fun(y, a = a.y, c = c.y, f = f.y)) %>%
+    ungroup() %>%
+    mutate(a.x = NULL,
+           a.y = NULL,
+           c.x = NULL,
+           c.y = NULL,
+           f.x = NULL,
+           f.y = NULL)
   return(global_points)
 }
 gui_gate_editor.linear<-function(df){
@@ -649,8 +678,8 @@ gui_gate_editor.log<-function(df){
         geom_point(colour = '#2288dd', alpha = input$alpha, size = 1.5)+
         scale_x_continuous(transform = transform_anylog(base = input$base))+
         scale_y_continuous(transform = transform_anylog(base = input$base))
-        #xlim(c(input$xmin, input$xmax))+
-        #ylim(c(input$ymin, input$ymax))
+      #xlim(c(input$xmin, input$xmax))+
+      #ylim(c(input$ymin, input$ymax))
       
       if(nrow(as.data.frame(global_points))>0){
         gg <- gg + geom_path(data = subset(global_points, par_x == input$x_var & par_y == input$y_var),
@@ -676,10 +705,11 @@ gui_gate_editor.log<-function(df){
 }
 gui_gate_editor<-function(df, scale = 'linear'){
   scale <- scale
-  if(scale == 'linear') gui_gate_editor.linear(df)
-  if(scale == 'biex') gui_gate_editor.biex(df)
-  if(scale == 'log') gui_gate_editor.log(df)
+  if(scale == 'linear') global_points<-gui_gate_editor.linear(df)
+  if(scale == 'biex') global_points<-gui_gate_editor.biex(df)
+  if(scale == 'log') global_points<-gui_gate_editor.log(df)
   if(!scale %in% c('linear', 'biex', 'log'))errorCondition('Unknown scale type')
+  if(scale %in% c('linear', 'biex', 'log'))return(global_points)
 }
 
 gate_mask<-function(df, gates){
@@ -703,10 +733,10 @@ transform_biex <- function(x, a = 1000, b = 1, c = 100, f = 1, w = 1){
   scales::new_transform(
     name = 'biex',
     transform =function(x){
-    t <- ((x-f)+ sqrt((x-f)^2+4*a*c))/(2*a)
-    z <- log(t)/(b)
-    y <- z+w
-    return(y)
+      t <- ((x-f)+ sqrt((x-f)^2+4*a*c))/(2*a)
+      z <- log(t)/(b)
+      y <- z+w
+      return(y)
     },
     inverse = function(x) a*exp(b*(x-w))-c*exp(-b*(x-w))+f,
   )
@@ -720,3 +750,4 @@ transform_anylog <- function(x, base){
 }
 
 std_gradient<-c('blue', 'cyan', 'green', 'red','orange','yellow', 'white')
+
