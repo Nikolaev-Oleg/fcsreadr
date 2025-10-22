@@ -199,8 +199,22 @@ compensate<-function(data, compensation_matrix, channels = NULL){
 }
 
 decompensate<-function(data, metadata){
-  out<-compensate(data, metadata$spillover)
+  spillover<-metadata$spillover
+  channel.names<-metadata$channels_data %>%
+    select(c('PnN', 'PnS'))
+  
+  row.names<-subset(channel.names, PnN %in% rownames(spillover))$PnS %>%
+    str_replace_all('-', '_')
+  col.names<-subset(channel.names, PnN %in% colnames(spillover))$PnS %>%
+    str_replace_all('-', '_')
+  
+  rownames(spillover)<-row.names
+  colnames(spillover)<-col.names
+  
+  out<-compensate(data, spillover)
 }
+
+
 
 
 
