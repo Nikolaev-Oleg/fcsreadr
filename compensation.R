@@ -198,5 +198,9 @@ compensate<-function(data, compensation_matrix, channels = NULL){
   return(out)
 }
 
+decompensate<-function(data, metadata){
+  out<-compensate(data, metadata$spillover)
+}
+
 
 
