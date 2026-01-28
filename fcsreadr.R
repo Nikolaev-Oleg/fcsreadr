@@ -652,7 +652,8 @@ gui_gate_editor.log<-function(df){
     observeEvent(input$submit, {
       points(mutate(points(), gate = input$user_input,
                     par_x = input$x_var,
-                    par_y = input$y_var))
+                    par_y = input$y_var,
+                    base = input$base))
       global_points<<-rbind(global_points, points())
       points(data.frame(x = numeric(0), y = numeric(0)))
       removeModal()
@@ -682,7 +683,11 @@ gui_gate_editor.log<-function(df){
       #ylim(c(input$ymin, input$ymax))
       
       if(nrow(as.data.frame(global_points))>0){
-        gg <- gg + geom_path(data = subset(global_points, par_x == input$x_var & par_y == input$y_var),
+        glob_pts <- subset(global_points, par_x == input$x_var & par_y == input$y_var) %>%
+          rowwise() %>%
+          mutate(x = trans_fun(x, base = input$base),
+                 y = trans_fun(y, base = input$base))
+        gg <- gg + geom_path(data = glob_pts,
                              aes(x = x, y = y, color = gate))
       }
       
@@ -701,6 +706,11 @@ gui_gate_editor.log<-function(df){
   
   app<-shinyApp(ui, server)
   runApp(app)
+  global_points <- global_points %>%
+    rowwise() %>%
+    mutate(x = trans_fun(x, base = base),
+           y = trans_fun(y, base = base),
+           base = NULL)
   return(global_points)
 }
 gui_gate_editor<-function(df, scale = 'linear'){
