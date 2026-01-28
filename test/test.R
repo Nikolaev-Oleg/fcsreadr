@@ -26,3 +26,4 @@ gate_masks<-gate_mask(df, gates) # apply masks based on gates
 df_gated<-cbind(df, gate_masks) # merge masks with data
 
 
+
