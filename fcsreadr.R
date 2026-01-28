@@ -146,57 +146,93 @@ get_fcs_metadata<-function(file){
     str_remove_all('\\$') %>%
     as.numeric()
   
-  spillover<-str_extract(file, regex("\\$spillover(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
-    str_remove(regex("\\$spillover", ignore_case = T)) %>% 
-    str_remove_all('\\f') %>% 
-    str_remove_all('\\$') %>%
-    str_split(',') %>%
-    unlist()
-  
-  n<-as.numeric(spillover[1])
-  spillover<-spillover[-1]
-  
-  channels <- spillover[1:n]
-  spillover <- as.numeric(spillover[-c(1:n)])
-  
-  spillover<-matrix(spillover, nrow = n, ncol = n, byrow = T)
-  colnames(spillover) <- channels
-  rownames(spillover) <- channels
-  
-  singular<-1
-  for(i in 1:n){
-    for(j in 1:n){
-      singularity_check <- (i == j & spillover[i,j] == 1)|(i != j & spillover[i,j] == 0)
-      singular<-singular*singularity_check
+  if(fcs_version == 'FCS3.1'){
+    spillover<-str_extract(file, regex("\\$spillover(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+      str_remove(regex("\\$spillover", ignore_case = T)) %>% 
+      str_remove_all('\\f') %>% 
+      str_remove_all('\\$') %>%
+      str_split(',') %>%
+      unlist()
+  } else if (str_detect(file, regex("(?<=\\f)spil(.*?)\\f(.+)\\f", ignore_case = T))){ # for some reason, some manufacturers (e.g. FACSCantoII) ignore optional keyword $COMP, but use uncolventional SPILL
+    spillover<-str_extract(file, regex("(?<=\\f)spil(.*?)\\f(.+)\\f", ignore_case = T)) %>%
+      str_remove(regex("spil(.*?)\\f", ignore_case = T)) %>% 
+      str_remove_all('\\f') %>% 
+      str_split(',') %>%
+      unlist()
+  } else if(str_detect(file, regex("\\$comp(.+?)\\f", ignore_case = T, dotall = T))){
+    spillover<-str_extract(file, regex("\\$comp(.+?)\\f", ignore_case = T)) %>%
+      str_remove(regex("spil(.*?)\\f", ignore_case = T)) %>% 
+      str_remove_all('\\f') %>% 
+      str_split(',') %>%
+      unlist()
+  } else{
+    spillover <- NA
+  }
+  if(length(spillover)>1){
+    n<-as.numeric(spillover[1])
+    spillover<-spillover[-1]
+    
+    channels <- spillover[1:n]
+    spillover <- as.numeric(spillover[-c(1:n)])
+    
+    spillover<-matrix(spillover, nrow = n, ncol = n, byrow = T)
+    colnames(spillover) <- channels
+    rownames(spillover) <- channels
+    
+    singular<-1
+    for(i in 1:n){
+      for(j in 1:n){
+        singularity_check <- (i == j & spillover[i,j] == 1)|(i != j & spillover[i,j] == 0)
+        singular<-singular*singularity_check
+        if(!singular){
+          break
+        }
+      }
       if(!singular){
+        warning("Compensation matrix is not singular, try decompensate()")
         break
       }
     }
-    if(!singular){
-      warning("Compensation matrix is not singular, try decompensate()")
-      break
-    }
+    if(singular)print('Compensation matrix checked')
+  } else{
+    warning('Cannot obtain compensation matrix')
   }
-  if(singular)print('Compensation matrix checked')
-  
   
   pnn<-str_extract_all(file, regex("\\$p[:digit:]+n(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
     unlist() %>%
     str_remove(regex("\\$p[:digit:]+n", ignore_case = T)) %>% 
     str_remove_all('\\f') %>% 
     str_remove_all('\\$')
+  pnn_channels<-str_extract_all(file, regex("\\$p[:digit:]+n(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    unlist() %>%
+    str_extract(regex("(?<=\\$p)[:digit:]+(?=n)", ignore_case = T)) %>% 
+    as.numeric()
+  pnn<-tibble(n = pnn_channels,
+              PnN = pnn)
   
   pns<-str_extract_all(file, regex("\\$p[:digit:]+s(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
     unlist() %>%
     str_remove(regex("\\$p[:digit:]+s", ignore_case = T)) %>% 
     str_remove_all('\\f') %>% 
     str_remove_all('\\$')
+  pns_channels<-str_extract_all(file, regex("\\$p[:digit:]+s(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    unlist() %>%
+    str_extract(regex("(?<=\\$p)[:digit:]+(?=s)", ignore_case = T)) %>% 
+    as.numeric()
+  pns<-tibble(n = pns_channels,
+              PnS = pns)
   
   pnd<-str_extract_all(file, regex("\\$p[:digit:]+d(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
     unlist() %>%
     str_remove(regex("\\$p[:digit:]+d", ignore_case = T)) %>% 
     str_remove_all('\\f') %>% 
     str_remove_all('\\$')
+  pnd_channels<-str_extract_all(file, regex("\\$p[:digit:]+d(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    unlist() %>%
+    str_extract(regex("(?<=\\$p)[:digit:]+(?=d)", ignore_case = T)) %>% 
+    as.numeric()
+  pnd<-tibble(n = pnd_channels,
+              PnD = pnd)
   
   png<-str_extract_all(file, regex("\\$p[:digit:]+g(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
     unlist() %>%
@@ -204,6 +240,12 @@ get_fcs_metadata<-function(file){
     str_remove_all('\\f') %>% 
     str_remove_all('\\$') %>%
     as.numeric()
+  png_channels<-str_extract_all(file, regex("\\$p[:digit:]+g(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    unlist() %>%
+    str_extract(regex("(?<=\\$p)[:digit:]+(?=g)", ignore_case = T)) %>% 
+    as.numeric()
+  png<-tibble(n = png_channels,
+              PnG = png)
   
   pnr<-str_extract_all(file, regex("\\$p[:digit:]+r(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
     unlist() %>%
@@ -211,6 +253,12 @@ get_fcs_metadata<-function(file){
     str_remove_all('\\f') %>% 
     str_remove_all('\\$') %>%
     as.numeric()
+  pnr_channels<-str_extract_all(file, regex("\\$p[:digit:]+r(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    unlist() %>%
+    str_extract(regex("(?<=\\$p)[:digit:]+(?=r)", ignore_case = T)) %>% 
+    as.numeric()
+  pnr<-tibble(n = pnr_channels,
+              PnR = pnr)
   
   pnb<-str_extract_all(file, regex("\\$p[:digit:]+b(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
     unlist() %>%
@@ -218,21 +266,33 @@ get_fcs_metadata<-function(file){
     str_remove_all('\\f') %>% 
     str_remove_all('\\$') %>%
     as.numeric()
+  pnb_channels<-str_extract_all(file, regex("\\$p[:digit:]+b(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    unlist() %>%
+    str_extract(regex("(?<=\\$p)[:digit:]+(?=b)", ignore_case = T)) %>% 
+    as.numeric()
+  pnb<-tibble(n = pnb_channels,
+              PnB = pnb)
   
   pne<-str_extract_all(file, regex("\\$p[:digit:]+e(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
     unlist() %>%
     str_remove(regex("\\$p[:digit:]+e", ignore_case = T)) %>% 
     str_remove_all('\\f') %>% 
     str_remove_all('\\$')
+  pne_channels<-str_extract_all(file, regex("\\$p[:digit:]+e(.+?)\\f", ignore_case = T, dotall = TRUE)) %>%
+    unlist() %>%
+    str_extract(regex("(?<=\\$p)[:digit:]+(?=e)", ignore_case = T)) %>% 
+    as.numeric()
+  pne<-tibble(n = pne_channels,
+              PnE = pne)
   
-  channels_data<-tibble(n = 1:par,
-                        PnN = pnn,
-                        PnS = pns,
-                        PnD = pnd,
-                        PnG = png,
-                        PnR = pnr,
-                        PnB = pnb,
-                        PnE = pne)
+  channels_data<-tibble(n = 1:par) %>%
+    full_join(pnn) %>%
+    full_join(pns) %>%
+    full_join(pnd) %>%
+    full_join(png) %>%
+    full_join(pnr) %>%
+    full_join(pnb) %>%
+    full_join(pne)
   
   metadata <- list(begin_analysis_from_header = begin_analysis_from_header,
                    end_analysis_from_header = end_analysis_from_header,
@@ -284,7 +344,7 @@ read_fcs<-function(file){
                        endian = metadata$endian)
     df <- matrix(intensity, ncol = metadata$par, byrow = T)
   } else{
-    warning('PnB not equal for all parameters. Processing ill take much longer than usual')
+    warning('PnB not equal for all parameters. Processing will take much longer than usual')
     bytes_per_event = sum(metadata$channels_data$PnB)
     intensity <- c()
     for(i in 1:metadata$tot){
@@ -314,9 +374,16 @@ read_fcs<-function(file){
     df<-matrix(intensity, ncol = metadata$par, byrow = T)
     df<-na.omit(df)
   }
-  colnames(df)<-c(metadata$channels_data$PnS) %>%
-    str_remove_all(' ') %>%
-    str_replace_all('-', '_')
+  if(sum(is.na(metadata$channels_data$PnS)) == 0 & length(unique(metadata$channels_data$PnS)) == length(metadata$channels_data$PnS)){
+    colnames(df)<-c(metadata$channels_data$PnS) %>%
+      str_remove_all(' ') %>%
+      str_replace_all('-', '_')
+  } else{
+    colnames(df)<-c(metadata$channels_data$PnN) %>%
+      str_remove_all(' ') %>%
+      str_replace_all('-', '_')
+    warning('Not enough unique long names, use short parameter names')
+  }
   df<-as.data.frame(df)
   
   return(df)
