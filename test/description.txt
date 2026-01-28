@@ -1,0 +1,5 @@
+The files in this directory are real .fcs files used for package testing.
+  1.fsc is FCS3.0 format
+  9.fcs, 11.fcs, neg.fcs, pe.fcs and fitc.fcs are FCS3.1 format
+Gating was tested on 9.fcs, compensation was tested on 11.fcs. neg.fcs, pe.fcs and fitc.fcs are control samples for 11.fcs
+To replicate testing, use test.R
